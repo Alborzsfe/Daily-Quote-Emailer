@@ -1,60 +1,78 @@
-import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import random
+from __future__ import annotations
+
 import csv
+import os
+import random
+import smtplib
+from email.message import EmailMessage
+from pathlib import Path
 
-# Your email credentials
-sender_email = os.getenv("SMTP_SENDER_EMAIL")
-sender_password = os.getenv("SMTP_APP_PASSWORD")
-
-if not sender_email or not sender_password:
-    raise RuntimeError("Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD before running the script.")
-
-# Path to your CSV file
-csv_file_path = "recipients.csv"
-
-# List of inspirational quotes
-quotes = [
-    "The best way to predict the future is to invent it. – Alan Kay",
-    "A dream doesn't become reality through magic; it takes sweat, determination, and hard work. – Colin Powell",
-    "Success is not the key to happiness. Happiness is the key to success. If you love what you are doing, you will be successful. – Albert Schweitzer",
-    # Add more quotes as needed
-]
+QUOTES = (
+    "The best way to predict the future is to invent it. — Alan Kay",
+    "A dream does not become reality through magic; it takes sweat, determination, and hard work. — Colin Powell",
+    "Success is not the key to happiness. Happiness is the key to success. — Albert Schweitzer",
+    "Do not watch the clock; do what it does. Keep going. — Sam Levenson",
+    "The only limit to our realization of tomorrow is our doubts of today. — Franklin D. Roosevelt",
+)
 
 
-# Function to send emails
-def send_email(recipient_name, recipient_email, quote):
-    subject = "Your Daily Inspirational Quote"
-    body = f"Hello {recipient_name}, here is your daily inspirational quote:\n\n{quote}"
+def load_recipients(csv_path: Path) -> list[tuple[str, str]]:
+    recipients: list[tuple[str, str]] = []
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or not {"name", "email"} <= set(reader.fieldnames):
+            raise ValueError("CSV must contain name and email columns.")
+        for row in reader:
+            name = row["name"].strip()
+            email = row["email"].strip()
+            if email:
+                recipients.append((name or "there", email))
+    return recipients
 
-    # Setting up the MIME
-    message = MIMEMultipart()
-    message['From'] = sender_email
-    message['To'] = recipient_email
-    message['Subject'] = subject
-    message.attach(MIMEText(body, 'plain'))
 
-    # Sending the email
+def build_message(sender: str, recipient: str, name: str, quote: str) -> EmailMessage:
+    message = EmailMessage()
+    message["Subject"] = "Your Daily Inspiration"
+    message["From"] = sender
+    message["To"] = recipient
+    message.set_content(f"Hello {name},\n\n{quote}\n\nHave a great day!\n")
+    return message
+
+
+def send_quotes(
+    sender: str,
+    app_password: str,
+    recipients: list[tuple[str, str]],
+    *,
+    smtp_host: str = "smtp.gmail.com",
+    smtp_port: int = 465,
+) -> None:
+    with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20) as server:
+        server.login(sender, app_password)
+        for name, email in recipients:
+            server.send_message(build_message(sender, email, name, random.choice(QUOTES)))
+
+
+def main() -> int:
+    sender = os.getenv("SMTP_SENDER_EMAIL")
+    app_password = os.getenv("SMTP_APP_PASSWORD")
+    if not sender or not app_password:
+        print("Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD before running.")
+        return 1
+
+    csv_path = Path(os.getenv("RECIPIENTS_CSV", "recipients.csv"))
     try:
-        session = smtplib.SMTP('smtp.gmail.com', 587)  # use gmail with port
-        session.starttls()  # enable security
-        session.login(sender_email, sender_password)  # login with mail_id and password
-        text = message.as_string()
-        session.sendmail(sender_email, recipient_email, text)
-        session.quit()
-        print(f"Mail Sent Successfully to {recipient_name} ({recipient_email})")
-    except Exception as e:
-        print(f"Failed to send email to {recipient_name} ({recipient_email}). Error: {e}")
+        recipients = load_recipients(csv_path)
+        if not recipients:
+            raise ValueError("No recipients were found.")
+        send_quotes(sender, app_password, recipients)
+    except (OSError, ValueError, smtplib.SMTPException) as exc:
+        print(f"Unable to send quotes: {exc}")
+        return 1
+
+    print(f"Sent {len(recipients)} message(s).")
+    return 0
 
 
-# Read CSV and send emails
-with open(csv_file_path, mode='r', encoding='utf-8') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        recipient_name = row['name']
-        recipient_email = row['email']
-        # Select a random quote
-        quote_of_the_day = random.choice(quotes)
-        send_email(recipient_name, recipient_email, quote_of_the_day)
+if __name__ == "__main__":
+    raise SystemExit(main())
