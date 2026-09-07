@@ -1,3 +1,4 @@
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -5,8 +6,11 @@ import random
 import csv
 
 # Your email credentials
-sender_email = "hejazizo.ali@gmail.com"
-sender_password = "fwsi ewkn dsqy rdft"
+sender_email = os.getenv("SMTP_SENDER_EMAIL")
+sender_password = os.getenv("SMTP_APP_PASSWORD")
+
+if not sender_email or not sender_password:
+    raise RuntimeError("Set SMTP_SENDER_EMAIL and SMTP_APP_PASSWORD before running the script.")
 
 # Path to your CSV file
 csv_file_path = "recipients.csv"

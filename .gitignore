@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+recipients.csv
+__pycache__/
+*.py[cod]
